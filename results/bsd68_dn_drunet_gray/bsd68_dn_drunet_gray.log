@@ -1,0 +1,12 @@
+24-10-27 15:16:39.698 : Model path: model_zoo\drunet_gray.pth
+24-10-27 15:16:39.700 : Params number: 32638656
+24-10-27 15:16:39.700 : model_name:drunet_gray, model sigma:15, image sigma:15
+24-10-27 15:16:39.700 : testsets\bsd68
+24-10-27 15:16:48.578 : Model path: model_zoo\drunet_gray.pth
+24-10-27 15:16:48.578 : Params number: 32638656
+24-10-27 15:16:48.578 : model_name:drunet_gray, model sigma:15, image sigma:15
+24-10-27 15:16:48.579 : testsets\bsd68
+24-10-27 15:23:39.374 : Model path: model_zoo\drunet_gray.pth
+24-10-27 15:23:39.374 : Params number: 32638656
+24-10-27 15:23:39.374 : model_name:drunet_gray, model sigma:15, image sigma:15
+24-10-27 15:23:39.374 : testsets\bsd68

@@ -1,0 +1,7 @@
+24-10-29 16:57:29.736 : Model path: model_zoo\drunet_gray.pth
+24-10-29 16:57:29.738 : Params number: 32638656
+24-10-29 16:57:29.738 : model_name:drunet_gray, model sigma:15, image sigma:15
+24-10-29 16:57:29.738 : testsets\dataset
+24-10-29 16:59:57.440 : img_clean_dc.mat - PSNR: 42.57 dB; SSIM: 0.9014.
+24-10-29 16:59:57.475 : Saved denoised image to results\dataset_dn_drunet_gray\img_clean_dc_denoised.mat
+24-10-29 16:59:57.476 : Average PSNR/SSIM(RGB) - dataset_dn_drunet_gray - PSNR: 42.57 dB; SSIM: 0.9014
