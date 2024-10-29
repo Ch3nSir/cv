@@ -176,14 +176,16 @@ def main():
         img_E = np.matmul(U,img_E)  
         print(img_E.shape)
         img_E = img_E.reshape(hight,width,channel)
+        print(img_E.shape)
 
 
             # --------------------------------
             # PSNR and SSIM
             # --------------------------------
         
-        
+        print("1")
         psnr = util.calculate_psnr(img_E, img_clean_dc, border=border)
+        print("2")
         ssim = util.calculate_ssim(img_E, img_clean_dc, border=border)
         print(psnr)
         print(ssim)
