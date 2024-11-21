@@ -5,12 +5,12 @@ import numpy as np
 from numpy import linalg as la
 from collections import OrderedDict
 import scipy.io 
-
 import torch
 
 from utils import utils_logger
 from utils import utils_model
 from utils import utils_image as util
+from utils import utils_pnp as pnp
 from Hysime import *
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -61,6 +61,9 @@ def main():
     show_img = False                     # default: False
     border = 0                           # shave boader to calculate PSNR and SSIM
     L = 8                               # L is the number of selected columns
+    iter_num = 10                         # default: 10, 20 or 30 for different noise levels
+    modelSigma1 = 49                     # set sigma_1, default: 49
+    modelSigma2 = noise_level_model*255. # set sigma_2, default: noise_level_model*255
 
     if 'color' in model_name:
         n_channels = 3                   # 3 for color image
@@ -88,6 +91,8 @@ def main():
     logger_name = result_name
     utils_logger.logger_info(logger_name, log_path=os.path.join(E_path, logger_name+'.log'))
     logger = logging.getLogger(logger_name)
+
+    
 
     # ----------------------------------------
     # load model
@@ -133,59 +138,74 @@ def main():
         # Add noise without clipping
         np.random.seed(seed=0)  # for reproducibility
         img_L += np.random.normal(0, noise_level_img/255., img_L.shape)
+        Noise_L_image = img_L
         #svd
-        
-        Y = np.transpose(img_L, (2, 0, 1)).reshape([channel, hight * width])
+        Y = np.transpose(Noise_L_image, (2, 0, 1)).reshape([channel, hight * width])
         #将三维数组 x 转置并重塑为二维数组 Y，形状为 [channel, hight*width]。 
         U1,sigma,Vt = la.svd(Y,full_matrices=False)
         #对 u_t 进行奇异值分解，得到左奇异向量矩阵 U1、奇异值向量 sigma 和右奇异向量矩阵的转置 Vt。
-        for i in range(L):
-            U = U1[:, i]                        #U是光谱表示，L从列里选取，可调
-            E = np.matmul(U.T,Y)               #E=Ut*Y 计算空间表示系数 E，通过将 Y 投影到光谱基 U 上。
-            E = np.expand_dims(E, axis=1)
-            E_noisy,Rw = est_noise(E)      #获取噪声估计  E_noisy和噪声相关矩阵 Rw。
-            E = E.reshape(1,hight,width) #将 E 重塑回三维数组，并调整维度顺序。
-            util.imshow(util.single2uint(E), title='Noisy image with noise level {}'.format(noise_level_img)) if show_img else None
-            E_noisy = E_noisy.reshape(1,hight,width).transpose(1, 2, 0) #将 E_noisy 重塑回三维数组，并调整维度顺序。
-            E_noisy = util.single2tensor4(E_noisy)
-            E = util.single2tensor4(E)
-            #img_L = torch.cat((img_L, torch.FloatTensor([noise_level_model/255.]).repeat(1, 1, img_L.shape[2], img_L.shape[3])), dim=1)
-            E = E.permute(0, 2, 3, 1)
-            E = torch.cat((E, E_noisy.reshape(1,1, hight, width)), dim=1)
-            E = E.to(device)
-            # ------------------------------------
-            # (2) img_E
-            # ------------------------------------
+        U = U1[:, 0:L]                        #U是光谱表示，L从列里选取，可调 U(191,p)
+        # --------------------------------
+        # (3) get rhos and sigmas
+        # --------------------------------
+        rhos, sigmas = pnp.get_rho_sigma(sigma=max(0.255/255., noise_level_img), iter_num=iter_num, modelSigma1=modelSigma1, modelSigma2=modelSigma2, w=1.0)
+        #rhos, sigmas = torch.tensor(rhos).to(device), torch.tensor(sigmas).to(device)
+        # ------------------------------------
+        # (2) img_E
+        # ------------------------------------
+        img_E = np.matmul(U.T,Y)               #E=Ut*Y 计算空间表示系数 E，通过将 Y 投影到光谱基 U 上。 img_E(p,hight*width)
+            #if not x8 and E.size(2)//8==0 and E.size(3)//8==0:
+            #    img_E = model(E)
+            #elif not x8 and (E.size(2)//8!=0 or E.size(3)//8!=0):
+            #    img_E = utils_model.test_mode(model, E, refield=64, mode=5)
+            #elif x8:
+            #   img_E = utils_model.test_mode(model, E, mode=3)
+        for i in range(iter_num):
+            # --------------------------------
+            # step 1, 递归下降法更新更新x
+            # --------------------------------
+            img_E = img_E - rhos[i] * (np.matmul(U.T, np.matmul(U, img_E) - Y))  #更新 img_E(p,hight*width)
 
-            if not x8 and E.size(2)//8==0 and E.size(3)//8==0:
-                img_E = model(E)
-            elif not x8 and (E.size(2)//8!=0 or E.size(3)//8!=0):
-                img_E = utils_model.test_mode(model, E, refield=64, mode=5)
-            elif x8:
-                img_E = utils_model.test_mode(model, E, mode=3)
+            # --------------------------------
+            # step 2, denoiser
+            # --------------------------------
+            for j in range(L):               
+                E = img_E[j,:]               #E=Ut*Y 计算空间表示系数 E，通过将 Y 投影到光谱基 U 上。 E(hight*width)
+                E = np.expand_dims(E, axis=1) #将 E 调整为二维数组，以便输入网络。
+                E_noisy,Rw = est_noise(E)      #获取噪声估计  E_noisy和噪声相关矩阵 Rw。
+                E = E.reshape(1,hight,width) #将 E 重塑回三维数组，并调整维度顺序。
+                util.imshow(util.single2uint(E), title='Noisy image with noise level {}'.format(noise_level_img)) if show_img else None
+                E_noisy = E_noisy.reshape(1,hight,width).transpose(1, 2, 0) #将 E_noisy 重塑回三维数组，并调整维度顺序。
+                E_noisy = util.single2tensor4(E_noisy)
+                E = util.single2tensor4(E)
+                #img_L = torch.cat((img_L, torch.FloatTensor([noise_level_model/255.]).repeat(1, 1, img_L.shape[2], img_L.shape[3])), dim=1)
+                E = E.permute(0, 2, 3, 1)
+                E = torch.cat((E, E_noisy.reshape(1,1, hight, width)), dim=1)
+                E = E.to(device)
+
+                if not x8 and E.size(2)//8==0 and E.size(3)//8==0:
+                    E = model(E)
+                elif not x8 and (E.size(2)//8!=0 or E.size(3)//8!=0):
+                    E = utils_model.test_mode(model, E, refield=64, mode=5)
+                elif x8:
+                    E = utils_model.test_mode(model, E, mode=3)
             # ------------------------------------
             #重新拼接E
             # ------------------------------------
-            img_cat = torch.cat((img_cat, img_E), dim=0) if i > 0 else img_E
-            print(img_cat.shape)
-        img_E = img_cat
-        print(img_E.shape)
-        img_E = img_E.reshape(L,hight*width)
-        img_E = util.tensor2uint(img_E)
-        U = U1[:, 0:8]
-        img_E = np.matmul(U,img_E)  
-        print(img_E.shape)
-        img_E = img_E.reshape(hight,width,channel)
-        print(img_E.shape)
-
+                img_cat = torch.cat((img_cat, E), dim=0) if j > 0 else E
+                print(img_cat.shape)
+            img_E = img_cat
+            print(img_E.shape)
+            img_E = img_E.reshape(L,hight*width)
+            img_E = util.tensor2uint(img_E)
+            print(img_E.shape)
 
             # --------------------------------
             # PSNR and SSIM
             # --------------------------------
-        
-        print("1")
+        img_E = np.matmul(U,img_E) 
+        img_E = img_E.reshape(hight,width,channel)
         psnr = util.calculate_psnr(img_E, img_clean_dc, border=border)
-        print("2")
         ssim = util.calculate_ssim(img_E, img_clean_dc, border=border)
         print(psnr)
         print(ssim)
