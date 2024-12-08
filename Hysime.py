@@ -79,7 +79,7 @@ def est_noise(y, noise_type='additive'):
 
         small = 1e-6
         L, N = r.shape
-        w = np.zeros((L, N), dtype=np.float)
+        w = np.zeros((L, N), dtype=np.float32)
         RR = np.dot(r, r.T)
         RRi = np.linalg.pinv(RR+small*np.eye(L))
         RRi = np.matrix(RRi)
